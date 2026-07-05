@@ -117,6 +117,15 @@ BASE_HEADERS = {
 }
 
 
+def strip_html(text: str) -> str:
+    """Buang tag HTML dari teks deskripsi dan rapikan spasi."""
+    if not text:
+        return ""
+    if "<" in text and ">" in text:
+        text = BeautifulSoup(text, "lxml").get_text(" ", strip=True)
+    return " ".join(text.split())
+
+
 def api_get(url: str, params: dict = None, headers: dict = None, timeout: int = 15) -> Optional[dict]:
     """Melakukan GET request ke API dan mengembalikan JSON response."""
     merged_headers = {**BASE_HEADERS, **(headers or {})}
@@ -165,9 +174,18 @@ def scrape_kalibrr(keyword: str, max_jobs: int = 10) -> list[JobListing]:
         try:
             title = job.get("name", "").strip()
             company = job.get("company", {}).get("name", "").strip()
-            description = job.get("description", "") or job.get("requirements", "") or "Lihat detail di Kalibrr."
-            job_id = job.get("slug") or job.get("id", "")
-            job_url = f"https://www.kalibrr.com/c/{job_id}/jobs/{job_id}" if job_id else "https://www.kalibrr.com"
+            description = strip_html(
+                job.get("description", "") or job.get("requirements", "")
+            ) or "Lihat detail di Kalibrr."
+
+            # URL job Kalibrr yang benar: /c/{company_code}/jobs/{id}/{slug}
+            company_code = (job.get("company") or {}).get("code", "")
+            job_pk = job.get("id", "")
+            job_slug = job.get("slug", "")
+            if company_code and job_pk:
+                job_url = f"https://www.kalibrr.com/c/{company_code}/jobs/{job_pk}/{job_slug}".rstrip("/")
+            else:
+                job_url = "https://www.kalibrr.com"
 
             # Lokasi dari google_location (city + region)
             geo = (job.get("google_location") or {}).get("address_components", {})

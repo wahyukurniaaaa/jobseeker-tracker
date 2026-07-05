@@ -2,6 +2,13 @@ import { supabase } from '$lib/supabaseClient';
 import type { JobApplication } from '$lib/types';
 import type { PageServerLoad } from './$types';
 
+/** Buang tag HTML dari deskripsi dan rapikan spasi. */
+function stripHtml(value: string | null): string {
+	if (!value) return '';
+	const text = value.replace(/<[^>]*>/g, ' ');
+	return text.replace(/\s+/g, ' ').trim();
+}
+
 /**
  * missing_skills bisa tersimpan sebagai array (jsonb) atau string JSON (text).
  * Normalisasi agar komponen selalu menerima array string.
@@ -32,6 +39,7 @@ export const load: PageServerLoad = async () => {
 
 	const jobs = ((data as JobApplication[]) ?? []).map((job) => ({
 		...job,
+		job_description: stripHtml(job.job_description),
 		missing_skills: normalizeSkills(job.missing_skills)
 	}));
 
