@@ -28,3 +28,14 @@ export function isPreferredLocation(location: string | null | undefined): boolea
 	const loc = location.toLowerCase();
 	return PREFERRED_LOCATIONS.some((area) => loc.includes(area.toLowerCase()));
 }
+
+/** Tentukan sumber lowongan dari domain job_url. */
+export function getJobSource(jobUrl: string | null | undefined): string {
+	if (!jobUrl) return 'Lainnya';
+	const url = jobUrl.toLowerCase();
+	if (url.includes('kalibrr.com')) return 'Kalibrr';
+	if (url.includes('glints.com')) return 'Glints';
+	if (url.includes('jobstreet.com')) return 'JobStreet';
+	if (url.includes('linkedin.com')) return 'LinkedIn';
+	return 'Lainnya';
+}

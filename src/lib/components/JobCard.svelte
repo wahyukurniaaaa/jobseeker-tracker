@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { JobApplication, ApplicationStatus } from '$lib/types';
-	import { isPreferredLocation } from '$lib/types';
+	import { isPreferredLocation, getJobSource } from '$lib/types';
 	import MatchBadge from './MatchBadge.svelte';
 	import StatusDropdown from './StatusDropdown.svelte';
 	import DetailModal from './DetailModal.svelte';
@@ -28,6 +28,7 @@
 		});
 
 	const preferred = $derived(isPreferredLocation(currentJob.location));
+	const source = $derived(getJobSource(currentJob.job_url));
 </script>
 
 <article class="job-card">
@@ -43,6 +44,7 @@
 	</header>
 
 	<div class="meta">
+		<span class="source source-{source.toLowerCase()}">{source}</span>
 		{#if currentJob.location}
 			<span class="location" class:preferred>
 				<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
@@ -162,6 +164,40 @@
 		gap: 6px 14px;
 		font-size: 0.78rem;
 		color: #64748b;
+	}
+
+	.source {
+		display: inline-flex;
+		align-items: center;
+		padding: 1px 8px;
+		border-radius: 5px;
+		font-size: 0.7rem;
+		font-weight: 600;
+		letter-spacing: 0.01em;
+		background: rgba(255, 255, 255, 0.06);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		color: #cbd5e1;
+	}
+
+	.source-kalibrr {
+		color: #f0abfc;
+		border-color: rgba(240, 171, 252, 0.3);
+		background: rgba(240, 171, 252, 0.08);
+	}
+	.source-glints {
+		color: #fca5a5;
+		border-color: rgba(252, 165, 165, 0.3);
+		background: rgba(252, 165, 165, 0.08);
+	}
+	.source-jobstreet {
+		color: #7dd3fc;
+		border-color: rgba(125, 211, 252, 0.3);
+		background: rgba(125, 211, 252, 0.08);
+	}
+	.source-linkedin {
+		color: #93c5fd;
+		border-color: rgba(147, 197, 253, 0.3);
+		background: rgba(147, 197, 253, 0.08);
 	}
 
 	.location {

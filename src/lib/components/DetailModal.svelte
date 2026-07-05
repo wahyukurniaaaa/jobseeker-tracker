@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { JobApplication } from '$lib/types';
+	import { getJobSource } from '$lib/types';
 
 	interface Props {
 		job: JobApplication;
@@ -7,6 +8,15 @@
 	}
 
 	let { job, onClose }: Props = $props();
+
+	let copied = $state(false);
+
+	async function copyToClipboard() {
+		if (!job.cover_letter) return;
+		await navigator.clipboard.writeText(job.cover_letter);
+		copied = true;
+		setTimeout(() => (copied = false), 2000);
+	}
 
 	function handleBackdropClick(e: MouseEvent) {
 		if (e.target === e.currentTarget) onClose();
@@ -33,9 +43,10 @@
 			<div class="header-text">
 				<h2 class="modal-title">{job.job_title}</h2>
 				<p class="modal-subtitle">{job.company_name}</p>
-				{#if job.location}
-					<p class="modal-location">{job.location}</p>
-				{/if}
+				<p class="modal-location">
+					{getJobSource(job.job_url)}{#if job.location}
+						· {job.location}{/if}
+				</p>
 			</div>
 			<button class="close-btn" onclick={onClose} aria-label="Tutup">✕</button>
 		</div>
@@ -81,6 +92,25 @@
 					</div>
 				{:else}
 					<p class="empty-text">Semua skill terpenuhi</p>
+				{/if}
+			</section>
+
+			<!-- Cover Letter -->
+			<section class="detail-section">
+				<div class="section-header-row">
+					<h3 class="section-title">Cover letter</h3>
+					{#if job.cover_letter}
+						<button class="copy-btn" onclick={copyToClipboard} class:copied>
+							{copied ? 'Tersalin' : 'Salin'}
+						</button>
+					{/if}
+				</div>
+				{#if job.cover_letter}
+					<div class="cover-letter-box">
+						<pre class="cover-letter-text">{job.cover_letter}</pre>
+					</div>
+				{:else}
+					<p class="empty-text">Belum ada cover letter</p>
 				{/if}
 			</section>
 		</div>
@@ -298,13 +328,66 @@
 		margin: 0;
 	}
 
-	.modal-body::-webkit-scrollbar {
+	.section-header-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.copy-btn {
+		background: rgba(255, 255, 255, 0.05);
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		border-radius: 8px;
+		color: #cbd5e1;
+		padding: 5px 14px;
+		font-size: 0.78rem;
+		font-weight: 500;
+		font-family: inherit;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.copy-btn:hover {
+		background: rgba(255, 255, 255, 0.1);
+	}
+
+	.copy-btn.copied {
+		color: #34d399;
+		border-color: rgba(52, 211, 153, 0.4);
+	}
+
+	.cover-letter-box {
+		background: rgba(0, 0, 0, 0.25);
+		border: 1px solid rgba(255, 255, 255, 0.06);
+		border-radius: 10px;
+		padding: 16px;
+		max-height: 280px;
+		overflow-y: auto;
+	}
+
+	.cover-letter-text {
+		font-family:
+			'Inter',
+			-apple-system,
+			sans-serif;
+		font-size: 0.85rem;
+		line-height: 1.7;
+		color: #cbd5e1;
+		white-space: pre-wrap;
+		word-break: break-word;
+		margin: 0;
+	}
+
+	.modal-body::-webkit-scrollbar,
+	.cover-letter-box::-webkit-scrollbar {
 		width: 4px;
 	}
-	.modal-body::-webkit-scrollbar-track {
+	.modal-body::-webkit-scrollbar-track,
+	.cover-letter-box::-webkit-scrollbar-track {
 		background: transparent;
 	}
-	.modal-body::-webkit-scrollbar-thumb {
+	.modal-body::-webkit-scrollbar-thumb,
+	.cover-letter-box::-webkit-scrollbar-thumb {
 		background: rgba(255, 255, 255, 0.1);
 		border-radius: 2px;
 	}
