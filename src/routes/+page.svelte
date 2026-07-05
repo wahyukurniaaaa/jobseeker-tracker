@@ -10,7 +10,7 @@
 	let jobs = $state<JobApplication[]>(data.jobs);
 	let searchQuery = $state('');
 	let filterStatus = $state<ApplicationStatus | 'All'>('All');
-	let prioritizeLocation = $state(true);
+	let onlyPreferred = $state(false);
 
 	// ─── Derived ──────────────────────────────────────────────────────────────
 	let filtered = $derived.by(() => {
@@ -22,15 +22,15 @@
 				j.job_title.toLowerCase().includes(q) ||
 				(j.location ?? '').toLowerCase().includes(q);
 			const matchesStatus = filterStatus === 'All' || j.status === filterStatus;
-			return matchesSearch && matchesStatus;
+			const matchesLocation = !onlyPreferred || isPreferredLocation(j.location);
+			return matchesSearch && matchesStatus && matchesLocation;
 		});
 
+		// Area prioritas selalu didahulukan, lalu urut berdasarkan match score.
 		return list.sort((a, b) => {
-			if (prioritizeLocation) {
-				const pa = isPreferredLocation(a.location) ? 0 : 1;
-				const pb = isPreferredLocation(b.location) ? 0 : 1;
-				if (pa !== pb) return pa - pb;
-			}
+			const pa = isPreferredLocation(a.location) ? 0 : 1;
+			const pb = isPreferredLocation(b.location) ? 0 : 1;
+			if (pa !== pb) return pa - pb;
 			return b.match_score - a.match_score;
 		});
 	});
@@ -129,8 +129,8 @@
 			</div>
 
 			<label class="loc-toggle">
-				<input type="checkbox" bind:checked={prioritizeLocation} />
-				<span>Utamakan Depok &amp; Jakarta (Sel/Pus/Tim)</span>
+				<input type="checkbox" bind:checked={onlyPreferred} />
+				<span>Hanya area pilihan (Depok, Jakarta Sel/Pus/Tim)</span>
 			</label>
 		</section>
 

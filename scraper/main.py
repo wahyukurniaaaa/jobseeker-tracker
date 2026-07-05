@@ -273,6 +273,22 @@ def scrape_linkedin(keyword: str, max_jobs: int = 10) -> list[JobListing]:
         if not title or not company:
             continue
 
+        # Hanya terima kartu lowongan asli (punya URL /jobs/view/),
+        # buang elemen promosi/sign-in seperti "Click here to add your information".
+        if "/jobs/view/" not in job_url:
+            continue
+
+        # Buang kartu promosi/CTA yang lolos (bukan lowongan sungguhan).
+        low = title.lower()
+        if any(p in low for p in ("click here", "sign in", "add your information")):
+            continue
+
+        # Buang lowongan berjudul skrip non-Latin dominan (lowongan luar negeri,
+        # mis. Cyrillic) — judul lowongan Indonesia memakai huruf Latin.
+        non_ascii = sum(1 for ch in title if ord(ch) > 127)
+        if title and non_ascii > len(title) * 0.3:
+            continue
+
         # Ambil ID lowongan dari URL (angka terakhir) untuk endpoint detail
         job_id = ""
         for part in reversed(job_url.rstrip("/").split("-")):
