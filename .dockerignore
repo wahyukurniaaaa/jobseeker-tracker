@@ -1,0 +1,15 @@
+node_modules/
+.svelte-kit/
+build/
+.env
+.env.*
+!.env.example
+scraper/
+.git
+.github
+README.md
+n8n_workflow_export.json
+tmp_mcp/
+.vscode
+.agents
+*.log

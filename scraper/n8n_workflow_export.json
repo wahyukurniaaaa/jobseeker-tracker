@@ -1,0 +1,209 @@
+{
+  "name": "Job Application Tracker Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "job-scraper",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "webhook-trigger",
+      "name": "webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Membaca dari body jika ada (webhook POST), jika tidak gunakan root json\nconst item = $input.first().json.body || $input.first().json;\n\n// Validasi field wajib\nconst required = ['job_title', 'company_name', 'job_description', 'job_url'];\nfor (const field of required) {\n  if (!item[field] || String(item[field]).trim() === '') {\n    throw new Error(`Field wajib kosong: ${field}`);\n  }\n}\n\nreturn [{\n  json: {\n    job_title: String(item.job_title).trim(),\n    company_name: String(item.company_name).trim(),\n    job_description: String(item.job_description).trim(),\n    job_url: String(item.job_url).trim(),\n    source_name: item.source_name || 'Unknown',\n    source_url: item.source_url || '',\n    received_at: new Date().toISOString(),\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "id": "validate-code",
+      "name": "normalized_job_data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\nconst SYSTEM_PROMPT = `Kamu adalah AI career advisor yang ahli dalam analisis lowongan kerja.\n\nCV Kandidat (Siti Miftahul Jannah):\n---\n- Nama: Siti Miftahul Jannah\n- Posisi: Customer Service & Administrative Professional\n- Pengalaman: Lebih dari 4 tahun di bidang administrasi, pengelolaan data, dan operasional layanan pelanggan (PT. Bank Mandiri Tbk & PT. Astra World).\n- Keahlian Teknis: Microsoft Office, Google Workspace, CRM System, Helpdesk Ticketing, Data Entry & Reporting, Email Correspondence, Administrasi Kantor, SPSS.\n- Soft Skills: Komunikasi Persuasif, Negosiasi & Resolusi Konflik, Problem Solving, Kerja Sama Tim, Adaptif, Multitasking, Empati, Detail-Oriented.\n- Pendidikan: S1 Manajemen, Universitas Yarsi (GPA 3.6/4.00), fokus manajemen operasional & bisnis.\n- Bahasa: Bahasa Indonesia (Native), Bahasa Inggris (Basic - Reading & Writing).\n---\n\nTugas kamu:\n1. Baca job_description yang diberikan.\n2. Cocokkan dengan CV kandidat.\n3. Hitung match_score (0-100) berdasarkan kesesuaian skill dan kualifikasi (CS, Admin, Data Entry, CRM, dll).\n4. Identifikasi missing_skills: skill/kualifikasi yang dibutuhkan lowongan tapi tidak ada di CV.\n5. Tulis cover_letter yang profesional dan singkat (maksimal 250 kata) dalam Bahasa Indonesia.\n\nKembalikan response HARUS berbentuk JSON murni seperti ini:\n{\n  \"match_score\": 85,\n  \"missing_skills\": [\"English Advanced\", \"Zendesk\"],\n  \"cover_letter\": \"Kepada Yth...\"\n}`;\n\nconst USER_MESSAGE = `Analisis lowongan kerja berikut:\n\nPosisi: ${item.job_title}\nPerusahaan: ${item.company_name}\nDeskripsi: ${item.job_description}`;\n\nconst requestBody = {\n  model: 'antigravity-kiro',\n  messages: [\n    { role: 'system', content: SYSTEM_PROMPT },\n    { role: 'user', content: USER_MESSAGE }\n  ],\n  temperature: 0.3\n};\n\nreturn [{\n  json: {\n    requestBody,\n    scraperData: item\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "build-ai-request",
+      "name": "build_request"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ai.wahyukurnia.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        0
+      ],
+      "id": "call-9router-api",
+      "name": "call_api",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "HTJvAY28aBSK6eNG",
+          "name": "9RouterApi"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const scraperData = $('normalized_job_data').first().json;\nconst aiResponse = $input.first().json;\n\nlet aiData;\ntry {\n  let content = aiResponse.choices[0].message.content;\n  content = content\n    .replace(/\\`\\`\\`json\\\\n/g, '')\n    .replace(/\\`\\`\\`json/g, '')\n    .replace(/\\`\\`\\`\\\\n/g, '')\n    .replace(/\\`\\`\\`/g, '')\n    .trim();\n  \n  aiData = typeof content === 'string' ? JSON.parse(content) : content;\n} catch (e) {\n  aiData = {\n    match_score: 50,\n    missing_skills: [],\n    cover_letter: \"Gagal mengenerate cover letter secara otomatis.\"\n  };\n}\n\nreturn [{\n  json: {\n    company_name: scraperData.company_name,\n    job_title: scraperData.job_title,\n    job_url: scraperData.job_url,\n    match_score: Number(aiData.match_score) || 0,\n    missing_skills: aiData.missing_skills || [],\n    cover_letter: aiData.cover_letter || '',\n    status: 'To Apply'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ],
+      "id": "parse-ai-response",
+      "name": "parse_response"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "job_applications",
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "company_name",
+              "fieldValue": "={{ $json.company_name }}"
+            },
+            {
+              "fieldId": "job_title",
+              "fieldValue": "={{ $json.job_title }}"
+            },
+            {
+              "fieldId": "job_url",
+              "fieldValue": "={{ $json.job_url }}"
+            },
+            {
+              "fieldId": "match_score",
+              "fieldValue": "={{ $json.match_score }}"
+            },
+            {
+              "fieldId": "missing_skills",
+              "fieldValue": "={{ JSON.stringify($json.missing_skills) }}"
+            },
+            {
+              "fieldId": "cover_letter",
+              "fieldValue": "={{ $json.cover_letter }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.status }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        0
+      ],
+      "id": "supabase-insert",
+      "name": "supabase_insert",
+      "credentials": {
+        "supabaseApi": {
+          "id": "IapBsHHddSYATXbx",
+          "name": "Supabase Connection"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "webhook": {
+      "main": [
+        [
+          {
+            "node": "normalized_job_data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "normalized_job_data": {
+      "main": [
+        [
+          {
+            "node": "build_request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "build_request": {
+      "main": [
+        [
+          {
+            "node": "call_api",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "call_api": {
+      "main": [
+        [
+          {
+            "node": "parse_response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "parse_response": {
+      "main": [
+        [
+          {
+            "node": "supabase_insert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {}
+}
