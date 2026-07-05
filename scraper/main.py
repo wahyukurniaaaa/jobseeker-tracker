@@ -1,24 +1,29 @@
 """
-Job Scraper Microservice (Multi-Source Support)
-==============================================
-Menarik data lowongan kerja dari berbagai portal kerja target,
-menyesuaikan selector HTML tiap website secara otomatis, dan
-mengirimkan hasilnya ke N8N_WEBHOOK_URL via HTTP POST.
+Job Scraper Microservice — Multi-Source (API Mode)
+===================================================
+Menarik lowongan kerja dari portal Indonesia via API internal mereka
+(lebih stabil dari CSS scraping karena tidak bergantung pada struktur HTML).
 
-Konfigurasi via environment variables (file .env):
+Sources:
+  - Kalibrr (via internal search API)
+  - Glints Indonesia (via internal search API)
+  - JobStreet Indonesia (via internal search API)
+
+Konfigurasi via environment variables:
   - N8N_WEBHOOK_URL   : URL Webhook n8n yang menerima payload JSON
+  - SEARCH_KEYWORD    : Kata kunci pencarian (default: "Customer Service")
+  - MAX_JOBS_PER_SOURCE : Maks lowongan per sumber (default: 10)
 """
 
 import json
 import logging
 import os
 import sys
+import time
 from dataclasses import asdict, dataclass
 from typing import Optional
-from urllib.parse import urljoin
 
 import requests
-from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 # ─── Logging Setup ────────────────────────────────────────────────────────────
@@ -42,126 +47,219 @@ class JobListing:
     company_name: str
     job_description: str
     job_url: str
-    source_name: str  # Nama website sumber (misal: Glints, Jobstreet)
+    source_name: str
     source_url: str
 
     def to_dict(self) -> dict:
         return asdict(self)
 
 
-# ─── Konfigurasi Sumber (Source Configurations) ────────────────────────────────
+# ─── HTTP Client ──────────────────────────────────────────────────────────────
 
-# Di sini kamu bisa mendaftarkan berbagai portal lowongan kerja target.
-# Kamu hanya perlu menyesuaikan selector CSS berdasarkan struktur HTML website target.
-SOURCES_CONFIG = [
-    {
-        "name": "Portal Generik A",
-        "url": "https://www.example-job-portal.com/jobs",
-        "selectors": {
-            "card": "div.job-card",
-            "title": "h2.job-title",
-            "company": "span.company-name",
-            "desc": "p.job-description",
-            "link": "a.job-link"
-        }
-    },
-    {
-        "name": "Portal Generik B",
-        "url": "https://www.another-job-site.org/vacancies",
-        "selectors": {
-            "card": "article.vacancy-item",
-            "title": "h3.vacancy-title",
-            "company": "div.employer-name",
-            "desc": "div.vacancy-summary",
-            "link": "a.apply-link"
-        }
-    }
-    # Contoh untuk real-world portal tinggal ditambahkan di sini:
-    # {
-    #     "name": "Glints",
-    #     "url": "https://glints.com/id/opportunities/jobs?keyword=backend+developer",
-    #     "selectors": {
-    #         "card": "div[class*='CompactOpportunityCardsc__CardWrapper']",
-    #         "title": "h3[class*='CompactOpportunityCardsc__JobTitle']",
-    #         "company": "a[class*='CompactOpportunityCardsc__CompanyLink']",
-    #         "desc": "div[class*='CompactOpportunityCardsc__OpportunityInfo']",
-    #         "link": "a[class*='CompactOpportunityCardsc__CardAnchorWrapper']"
-    #     }
-    # }
-]
-
-
-# ─── HTTP Helpers ─────────────────────────────────────────────────────────────
-
-HEADERS = {
+BASE_HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/125.0.0.0 Safari/537.36"
     ),
-    "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "id-ID,id;q=0.9,en;q=0.8",
 }
 
 
-def fetch_html(url: str, timeout: int = 15) -> Optional[str]:
-    """Mengambil konten HTML dari URL target."""
+def api_get(url: str, params: dict = None, headers: dict = None, timeout: int = 15) -> Optional[dict]:
+    """Melakukan GET request ke API dan mengembalikan JSON response."""
+    merged_headers = {**BASE_HEADERS, **(headers or {})}
     try:
-        response = requests.get(url, headers=HEADERS, timeout=timeout)
+        response = requests.get(url, params=params, headers=merged_headers, timeout=timeout)
         response.raise_for_status()
-        logger.info(f"Berhasil fetch: {url} [{response.status_code}]")
-        return response.text
+        return response.json()
+    except requests.exceptions.JSONDecodeError:
+        logger.error(f"Respons bukan JSON dari {url}")
     except requests.exceptions.RequestException as e:
-        logger.error(f"Gagal mengambil URL {url}: {e}")
+        logger.error(f"Request error untuk {url}: {e}")
     return None
 
 
-# ─── Parser Engine ────────────────────────────────────────────────────────────
+# ─── Source Scrapers ──────────────────────────────────────────────────────────
 
 
-def parse_source(html: str, source_config: dict) -> list[JobListing]:
-    """Mem-parsing HTML berdasarkan konfigurasi selector spesifik dari portal target."""
-    soup = BeautifulSoup(html, "lxml")
-    listings: list[JobListing] = []
-    
-    cfg = source_config
-    selectors = cfg["selectors"]
+def scrape_kalibrr(keyword: str, max_jobs: int = 10) -> list[JobListing]:
+    """
+    Scrape Kalibrr via internal search API.
+    Kalibrr menyediakan endpoint JSON yang bisa diakses langsung.
+    """
+    logger.info("  [Kalibrr] Memulai pencarian...")
+    listings = []
 
-    # Cari semua job card di halaman
-    job_cards = soup.select(selectors["card"])
-    logger.info(f"[{cfg['name']}] Ditemukan {len(job_cards)} elemen lowongan")
+    url = "https://www.kalibrr.com/kjs/job_board/search"
+    params = {
+        "limit": max_jobs,
+        "offset": 0,
+        "text": keyword,
+        "country_code": "ID",
+    }
+    headers = {
+        "Referer": "https://www.kalibrr.com/job-board/te/customer-service",
+    }
 
-    for idx, card in enumerate(job_cards, start=1):
+    data = api_get(url, params=params, headers=headers)
+    if not data:
+        logger.warning("  [Kalibrr] Gagal mendapatkan data dari API.")
+        return listings
+
+    jobs = data.get("jobs", [])
+    logger.info(f"  [Kalibrr] Ditemukan {len(jobs)} lowongan.")
+
+    for job in jobs[:max_jobs]:
         try:
-            # Ekstrak data menggunakan selector spesifik sumber ini
-            title_el = card.select_one(selectors["title"])
-            company_el = card.select_one(selectors["company"])
-            desc_el = card.select_one(selectors["desc"])
-            link_el = card.select_one(selectors["link"])
+            title = job.get("name", "").strip()
+            company = job.get("company", {}).get("name", "").strip()
+            description = job.get("description", "") or job.get("requirements", "") or "Lihat detail di Kalibrr."
+            job_id = job.get("slug") or job.get("id", "")
+            job_url = f"https://www.kalibrr.com/c/{job_id}/jobs/{job_id}" if job_id else "https://www.kalibrr.com"
 
-            job_title = title_el.get_text(strip=True) if title_el else ""
-            company_name = company_el.get_text(strip=True) if company_el else ""
-            job_description = desc_el.get_text(strip=True) if desc_el else ""
-            
-            raw_href = link_el.get("href", "") if link_el else ""
-            job_url = urljoin(cfg["url"], raw_href) if raw_href else ""
+            if title and company:
+                listings.append(JobListing(
+                    job_title=title,
+                    company_name=company,
+                    job_description=str(description)[:1000],
+                    job_url=job_url,
+                    source_name="Kalibrr",
+                    source_url="https://www.kalibrr.com",
+                ))
+        except Exception as e:
+            logger.warning(f"  [Kalibrr] Gagal parse job: {e}")
+            continue
 
-            # Validasi minimal
-            if not job_title or not company_name:
+    return listings
+
+
+def scrape_glints(keyword: str, max_jobs: int = 10) -> list[JobListing]:
+    """
+    Scrape Glints Indonesia via GraphQL API internal.
+    Glints menggunakan GraphQL endpoint yang bisa diakses.
+    """
+    logger.info("  [Glints] Memulai pencarian...")
+    listings = []
+
+    url = "https://glints.com/api/graphql"
+    headers = {
+        "Content-Type": "application/json",
+        "Referer": "https://glints.com/id/opportunities/jobs/explore",
+        "x-glints-client": "web",
+    }
+    query = """
+    query SearchJobs($keyword: String!, $limit: Int!, $offset: Int!) {
+      searchJobs(keyword: $keyword, limit: $limit, offset: $offset, countryCode: "ID") {
+        data {
+          id
+          title
+          salaryEstimate
+          country { name }
+          city { name }
+          company { name }
+          isEasyApply
+          descriptionText: description
+        }
+      }
+    }
+    """
+    payload = {
+        "query": query,
+        "variables": {"keyword": keyword, "limit": max_jobs, "offset": 0}
+    }
+
+    try:
+        resp = requests.post(url, json=payload, headers={**BASE_HEADERS, **headers}, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        jobs = data.get("data", {}).get("searchJobs", {}).get("data", [])
+        logger.info(f"  [Glints] Ditemukan {len(jobs)} lowongan.")
+
+        for job in jobs[:max_jobs]:
+            try:
+                title = job.get("title", "").strip()
+                company = job.get("company", {}).get("name", "").strip()
+                desc = job.get("descriptionText") or "Lihat detail di Glints."
+                job_id = job.get("id", "")
+                job_url = f"https://glints.com/id/opportunities/jobs/{job_id}" if job_id else "https://glints.com/id"
+
+                if title and company:
+                    listings.append(JobListing(
+                        job_title=title,
+                        company_name=company,
+                        job_description=str(desc)[:1000],
+                        job_url=job_url,
+                        source_name="Glints",
+                        source_url="https://glints.com/id",
+                    ))
+            except Exception as e:
+                logger.warning(f"  [Glints] Gagal parse job: {e}")
                 continue
 
-            listing = JobListing(
-                job_title=job_title,
-                company_name=company_name,
-                job_description=job_description or "Deskripsi tidak tersedia",
-                job_url=job_url,
-                source_name=cfg["name"],
-                source_url=cfg["url"]
-            )
-            listings.append(listing)
-            logger.debug(f"Ekstrak sukses: {job_title} @ {company_name}")
+    except Exception as e:
+        logger.warning(f"  [Glints] Gagal mendapatkan data: {e}")
 
+    return listings
+
+
+def scrape_jobstreet(keyword: str, max_jobs: int = 10) -> list[JobListing]:
+    """
+    Scrape JobStreet Indonesia via Chalice API.
+    JobStreet (SEEK Asia) mengekspos endpoint API yang dapat diakses.
+    """
+    logger.info("  [JobStreet] Memulai pencarian...")
+    listings = []
+
+    # JobStreet Indonesia menggunakan SEEK Chalice API
+    url = "https://id.jobstreet.com/api/chalice-search/v4/search"
+    params = {
+        "siteKey": "ID-Main",
+        "sourcesystem": "JobStreet",
+        "userqueryid": "customer-service",
+        "userid": "0",
+        "usersessionid": "0",
+        "eventCaptureSessionId": "0",
+        "where": "Indonesia",
+        "what": keyword,
+        "page": 1,
+        "pageSize": max_jobs,
+        "include": "seodata",
+        "locale": "id-ID",
+    }
+    headers = {
+        "Referer": "https://id.jobstreet.com/",
+        "Accept": "application/json",
+    }
+
+    data = api_get(url, params=params, headers=headers)
+    if not data:
+        logger.warning("  [JobStreet] Gagal mendapatkan data dari API.")
+        return listings
+
+    jobs = data.get("data", []) or data.get("jobs", [])
+    logger.info(f"  [JobStreet] Ditemukan {len(jobs)} lowongan.")
+
+    for job in jobs[:max_jobs]:
+        try:
+            title = job.get("title", "").strip()
+            company = (job.get("companyName") or job.get("advertiser", {}).get("description", "")).strip()
+            desc = job.get("teaser") or job.get("abstract") or "Lihat detail di JobStreet."
+            job_id = job.get("id", "")
+            job_url = f"https://id.jobstreet.com/id/job/{job_id}" if job_id else "https://id.jobstreet.com"
+
+            if title and company:
+                listings.append(JobListing(
+                    job_title=title,
+                    company_name=company,
+                    job_description=str(desc)[:1000],
+                    job_url=job_url,
+                    source_name="JobStreet",
+                    source_url="https://id.jobstreet.com",
+                ))
         except Exception as e:
-            logger.warning(f"Gagal mengekstrak item ke-{idx} di {cfg['name']}: {e}")
+            logger.warning(f"  [JobStreet] Gagal parse job: {e}")
             continue
 
     return listings
@@ -170,7 +268,7 @@ def parse_source(html: str, source_config: dict) -> list[JobListing]:
 # ─── Webhook Delivery ─────────────────────────────────────────────────────────
 
 
-def send_to_webhook(webhook_url: str, listing: JobListing) -> bool:
+def send_to_webhook(webhook_url: str, listing: JobListing, delay: float = 0.5) -> bool:
     """Mengirim satu job listing ke n8n Webhook via HTTP POST."""
     payload = listing.to_dict()
     try:
@@ -178,13 +276,14 @@ def send_to_webhook(webhook_url: str, listing: JobListing) -> bool:
             webhook_url,
             json=payload,
             headers={"Content-Type": "application/json"},
-            timeout=10,
+            timeout=15,
         )
         response.raise_for_status()
-        logger.info(f"✓ Terkirim ke webhook: '{listing.job_title}' dari {listing.source_name}")
+        logger.info(f"  ✓ Terkirim: '{listing.job_title}' dari {listing.source_name}")
+        time.sleep(delay)  # throttle agar tidak spam webhook
         return True
     except requests.exceptions.RequestException as e:
-        logger.error(f"Gagal kirim webhook untuk '{listing.job_title}': {e}")
+        logger.error(f"  ✗ Gagal kirim '{listing.job_title}': {e}")
     return False
 
 
@@ -193,38 +292,51 @@ def send_to_webhook(webhook_url: str, listing: JobListing) -> bool:
 
 def main() -> None:
     load_dotenv()
+
     webhook_url = os.getenv("N8N_WEBHOOK_URL", "").strip()
+    keyword = os.getenv("SEARCH_KEYWORD", "Customer Service").strip()
+    max_jobs = int(os.getenv("MAX_JOBS_PER_SOURCE", "10"))
 
     if not webhook_url:
-        logger.error("N8N_WEBHOOK_URL tidak ditemukan di .env")
+        logger.error("N8N_WEBHOOK_URL tidak ditemukan di environment.")
         sys.exit(1)
 
     logger.info("=" * 60)
-    logger.info("  Starting Job Scraper Engine — Multi-Source Mode")
+    logger.info("  Job Scraper Engine — Multi-Source API Mode")
+    logger.info(f"  Keyword  : {keyword}")
+    logger.info(f"  Max/src  : {max_jobs}")
     logger.info("=" * 60)
 
     all_listings: list[JobListing] = []
 
-    # Loop mengunjungi setiap sumber lowongan kerja
-    for source in SOURCES_CONFIG:
-        logger.info(f"\nProcessing Source: {source['name']}")
-        logger.info(f"Target URL       : {source['url']}")
+    # ── Source 1: Kalibrr ──
+    try:
+        kalibrr_jobs = scrape_kalibrr(keyword, max_jobs)
+        all_listings.extend(kalibrr_jobs)
+    except Exception as e:
+        logger.error(f"[Kalibrr] Error tidak terduga: {e}")
 
-        html = fetch_html(source["url"])
-        if not html:
-            logger.warning(f"Skip sumber {source['name']} karena gagal mengambil HTML.")
-            continue
+    # ── Source 2: Glints ──
+    try:
+        glints_jobs = scrape_glints(keyword, max_jobs)
+        all_listings.extend(glints_jobs)
+    except Exception as e:
+        logger.error(f"[Glints] Error tidak terduga: {e}")
 
-        listings = parse_source(html, source)
-        logger.info(f"Sukses mengekstrak {len(listings)} lowongan dari {source['name']}")
-        all_listings.extend(listings)
+    # ── Source 3: JobStreet ──
+    try:
+        jobstreet_jobs = scrape_jobstreet(keyword, max_jobs)
+        all_listings.extend(jobstreet_jobs)
+    except Exception as e:
+        logger.error(f"[JobStreet] Error tidak terduga: {e}")
 
     if not all_listings:
-        logger.warning("\nTidak ada lowongan kerja yang ditemukan dari seluruh sumber.")
+        logger.warning("\nTidak ada lowongan ditemukan dari semua sumber.")
+        logger.warning("Kemungkinan penyebab: API berubah, rate-limited, atau koneksi gagal.")
         sys.exit(0)
 
-    # Kirim semua lowongan yang terkumpul ke n8n
-    logger.info(f"\nMengirim total {len(all_listings)} lowongan ke n8n webhook...")
+    logger.info(f"\nTotal {len(all_listings)} lowongan ditemukan. Mulai kirim ke n8n...")
+
     success_count = 0
     for item in all_listings:
         if send_to_webhook(webhook_url, item):
@@ -233,11 +345,14 @@ def main() -> None:
     logger.info("\n" + "=" * 60)
     logger.info("  Execution Summary")
     logger.info("=" * 60)
-    logger.info(f"  Total Di-scrape   : {len(all_listings)}")
-    logger.info(f"  Sukses Terkirim   : {success_count}")
-    logger.info(f"  Gagal Terkirim    : {len(all_listings) - success_count}")
+    logger.info(f"  Sumber aktif       : Kalibrr, Glints, JobStreet")
+    logger.info(f"  Total ditemukan    : {len(all_listings)}")
+    logger.info(f"  Sukses terkirim    : {success_count}")
+    logger.info(f"  Gagal terkirim     : {len(all_listings) - success_count}")
     logger.info("=" * 60)
 
 
 if __name__ == "__main__":
     main()
+
+
