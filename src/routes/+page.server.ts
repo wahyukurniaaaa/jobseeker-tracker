@@ -40,6 +40,7 @@ export const load: PageServerLoad = async () => {
 	const jobs = ((data as JobApplication[]) ?? []).map((job) => ({
 		...job,
 		job_description: stripHtml(job.job_description),
+		cover_letter: stripHtml(job.cover_letter),
 		missing_skills: normalizeSkills(job.missing_skills)
 	}));
 
