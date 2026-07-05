@@ -5,49 +5,55 @@
 
 	let { score }: Props = $props();
 
-	const getBadgeClass = (score: number) => {
-		if (score >= 80) return 'badge-green';
-		if (score >= 50) return 'badge-yellow';
-		return 'badge-red';
-	};
-
-	const getLabel = (score: number) => {
-		if (score >= 80) return '🟢 High';
-		if (score >= 50) return '🟡 Medium';
-		return '🔴 Low';
-	};
+	const level = $derived(score >= 80 ? 'high' : score >= 50 ? 'medium' : 'low');
 </script>
 
-<span class="match-badge {getBadgeClass(score)}">
-	{getLabel(score)}
-	<strong>{score}%</strong>
+<span class="match-badge {level}">
+	<span class="dot"></span>
+	<strong>{score}</strong>
+	<span class="unit">match</span>
 </span>
 
 <style>
 	.match-badge {
 		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		padding: 3px 10px;
-		border-radius: 999px;
+		align-items: baseline;
+		gap: 5px;
+		padding: 3px 9px;
+		border-radius: 7px;
 		font-size: 0.75rem;
-		font-weight: 600;
-		letter-spacing: 0.02em;
+		font-weight: 500;
 		white-space: nowrap;
+		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		color: #cbd5e1;
 	}
-	.badge-green {
-		background: rgba(34, 197, 94, 0.15);
-		color: #22c55e;
-		border: 1px solid rgba(34, 197, 94, 0.3);
+
+	.match-badge strong {
+		font-weight: 700;
+		font-size: 0.82rem;
 	}
-	.badge-yellow {
-		background: rgba(234, 179, 8, 0.15);
-		color: #eab308;
-		border: 1px solid rgba(234, 179, 8, 0.3);
+
+	.unit {
+		color: #64748b;
+		font-size: 0.68rem;
 	}
-	.badge-red {
-		background: rgba(239, 68, 68, 0.15);
-		color: #ef4444;
-		border: 1px solid rgba(239, 68, 68, 0.3);
+
+	.dot {
+		align-self: center;
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		flex-shrink: 0;
+	}
+
+	.high .dot {
+		background: #22c55e;
+	}
+	.medium .dot {
+		background: #eab308;
+	}
+	.low .dot {
+		background: #ef4444;
 	}
 </style>

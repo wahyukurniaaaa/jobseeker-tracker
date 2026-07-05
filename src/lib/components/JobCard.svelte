@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { JobApplication, ApplicationStatus } from '$lib/types';
+	import { isPreferredLocation } from '$lib/types';
 	import MatchBadge from './MatchBadge.svelte';
 	import StatusDropdown from './StatusDropdown.svelte';
 	import DetailModal from './DetailModal.svelte';
@@ -19,62 +20,67 @@
 		onStatusUpdate?.(id, newStatus);
 	}
 
-	const formatDate = (dateStr: string) => {
-		return new Date(dateStr).toLocaleDateString('id-ID', {
+	const formatDate = (dateStr: string) =>
+		new Date(dateStr).toLocaleDateString('id-ID', {
 			day: 'numeric',
 			month: 'short',
 			year: 'numeric'
 		});
-	};
+
+	const preferred = $derived(isPreferredLocation(currentJob.location));
 </script>
 
-<div class="job-card">
-	<!-- Score bar accent -->
-	<div
-		class="score-bar"
-		style="width: {currentJob.match_score}%; background: {currentJob.match_score >= 80
-			? '#22c55e'
-			: currentJob.match_score >= 50
-				? '#eab308'
-				: '#ef4444'}"
-	></div>
-
-	<div class="card-content">
-		<!-- Top row -->
-		<div class="card-top">
-			<div class="company-info">
-				<div class="company-avatar">
-					{currentJob.company_name.charAt(0).toUpperCase()}
-				</div>
-				<div>
-					<h3 class="company-name">{currentJob.company_name}</h3>
-					<p class="job-title">{currentJob.job_title}</p>
-				</div>
+<article class="job-card">
+	<header class="card-head">
+		<div class="company-info">
+			<div class="avatar">{currentJob.company_name.charAt(0).toUpperCase()}</div>
+			<div class="head-text">
+				<h3 class="title">{currentJob.job_title}</h3>
+				<p class="company">{currentJob.company_name}</p>
 			</div>
-			<MatchBadge score={currentJob.match_score} />
 		</div>
+		<MatchBadge score={currentJob.match_score} />
+	</header>
 
-		<!-- Meta row -->
-		<div class="card-meta">
-			<span class="meta-date">📅 {formatDate(currentJob.created_at)}</span>
-			{#if currentJob.missing_skills && currentJob.missing_skills.length > 0}
-				<span class="meta-skills">⚠️ {currentJob.missing_skills.length} skill missing</span>
+	<div class="meta">
+		{#if currentJob.location}
+			<span class="location" class:preferred>
+				<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+					<path
+						fill="currentColor"
+						d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"
+					/>
+				</svg>
+				{currentJob.location}
+			</span>
+		{/if}
+		<span class="date">{formatDate(currentJob.created_at)}</span>
+	</div>
+
+	{#if currentJob.job_description}
+		<p class="description">{currentJob.job_description}</p>
+	{/if}
+
+	{#if currentJob.missing_skills && currentJob.missing_skills.length > 0}
+		<div class="skills">
+			{#each currentJob.missing_skills.slice(0, 3) as skill (skill)}
+				<span class="skill">{skill}</span>
+			{/each}
+			{#if currentJob.missing_skills.length > 3}
+				<span class="skill more">+{currentJob.missing_skills.length - 3}</span>
 			{/if}
 		</div>
+	{/if}
 
-		<!-- Bottom row -->
-		<div class="card-bottom">
-			<StatusDropdown
-				id={currentJob.id}
-				bind:status={currentJob.status}
-				onUpdate={handleStatusUpdate}
-			/>
-			<button class="details-btn" onclick={() => (showModal = true)}>
-				Detail <span>→</span>
-			</button>
-		</div>
-	</div>
-</div>
+	<footer class="card-foot">
+		<StatusDropdown
+			id={currentJob.id}
+			bind:status={currentJob.status}
+			onUpdate={handleStatusUpdate}
+		/>
+		<button class="details-btn" onclick={() => (showModal = true)}>Lihat detail</button>
+	</footer>
+</article>
 
 {#if showModal}
 	<DetailModal job={currentJob} onClose={() => (showModal = false)} />
@@ -82,130 +88,154 @@
 
 <style>
 	.job-card {
-		background: linear-gradient(135deg, #1a1f2e 0%, #161b27 100%);
+		background: #161b27;
 		border: 1px solid rgba(255, 255, 255, 0.07);
 		border-radius: 14px;
-		overflow: hidden;
+		padding: 16px;
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
 		transition:
-			transform 0.2s ease,
-			box-shadow 0.2s ease,
-			border-color 0.2s ease;
-		position: relative;
+			border-color 0.2s ease,
+			background 0.2s ease;
 	}
 
 	.job-card:hover {
-		transform: translateY(-3px);
-		border-color: rgba(96, 165, 250, 0.25);
-		box-shadow:
-			0 12px 40px rgba(0, 0, 0, 0.3),
-			0 0 0 1px rgba(96, 165, 250, 0.1);
+		border-color: rgba(255, 255, 255, 0.14);
+		background: #181e2b;
 	}
 
-	.score-bar {
-		height: 3px;
-		transition: width 0.6s ease;
-	}
-
-	.card-content {
-		padding: 20px;
-		display: flex;
-		flex-direction: column;
-		gap: 16px;
-	}
-
-	.card-top {
+	.card-head {
 		display: flex;
 		align-items: flex-start;
 		justify-content: space-between;
-		gap: 12px;
+		gap: 10px;
 	}
 
 	.company-info {
 		display: flex;
 		align-items: center;
-		gap: 12px;
+		gap: 11px;
 		min-width: 0;
 	}
 
-	.company-avatar {
-		width: 42px;
-		height: 42px;
-		border-radius: 10px;
-		background: linear-gradient(135deg, #1e40af, #4f46e5);
+	.avatar {
+		width: 40px;
+		height: 40px;
+		border-radius: 9px;
+		background: #232a3a;
+		border: 1px solid rgba(255, 255, 255, 0.08);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 1.1rem;
-		font-weight: 800;
-		color: white;
+		font-size: 1rem;
+		font-weight: 700;
+		color: #cbd5e1;
 		flex-shrink: 0;
 	}
 
-	.company-name {
+	.head-text {
+		min-width: 0;
+	}
+
+	.title {
 		font-size: 0.95rem;
-		font-weight: 700;
+		font-weight: 600;
 		color: #f1f5f9;
 		margin: 0;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
+		line-height: 1.3;
 	}
 
-	.job-title {
+	.company {
 		font-size: 0.8rem;
-		color: #64748b;
-		margin: 3px 0 0 0;
+		color: #94a3b8;
+		margin: 2px 0 0;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
 
-	.card-meta {
+	.meta {
 		display: flex;
 		align-items: center;
-		gap: 16px;
+		flex-wrap: wrap;
+		gap: 6px 14px;
+		font-size: 0.78rem;
+		color: #64748b;
 	}
 
-	.meta-date,
-	.meta-skills {
-		font-size: 0.75rem;
-		color: #475569;
+	.location {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		color: #94a3b8;
 	}
 
-	.card-bottom {
+	.location.preferred {
+		color: #34d399;
+		font-weight: 500;
+	}
+
+	.location svg {
+		flex-shrink: 0;
+	}
+
+	.description {
+		font-size: 0.83rem;
+		line-height: 1.55;
+		color: #94a3b8;
+		margin: 0;
+		display: -webkit-box;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
+	.skills {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.skill {
+		font-size: 0.72rem;
+		color: #94a3b8;
+		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		border-radius: 6px;
+		padding: 2px 8px;
+	}
+
+	.skill.more {
+		color: #64748b;
+	}
+
+	.card-foot {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		gap: 10px;
 		padding-top: 12px;
-		border-top: 1px solid rgba(255, 255, 255, 0.05);
+		border-top: 1px solid rgba(255, 255, 255, 0.06);
 	}
 
 	.details-btn {
-		background: rgba(96, 165, 250, 0.1);
-		border: 1px solid rgba(96, 165, 250, 0.2);
+		background: transparent;
+		border: 1px solid rgba(255, 255, 255, 0.12);
 		border-radius: 8px;
-		color: #60a5fa;
-		padding: 6px 14px;
+		color: #cbd5e1;
+		padding: 7px 13px;
 		font-size: 0.8rem;
-		font-weight: 600;
+		font-weight: 500;
+		font-family: inherit;
 		cursor: pointer;
-		transition: all 0.2s ease;
-		display: flex;
-		align-items: center;
-		gap: 4px;
+		transition: all 0.15s ease;
+		white-space: nowrap;
 	}
 
 	.details-btn:hover {
-		background: rgba(96, 165, 250, 0.2);
-		border-color: rgba(96, 165, 250, 0.4);
-		transform: translateX(2px);
-	}
-
-	.details-btn span {
-		transition: transform 0.2s ease;
-	}
-
-	.details-btn:hover span {
-		transform: translateX(3px);
+		background: rgba(255, 255, 255, 0.06);
+		border-color: rgba(255, 255, 255, 0.2);
 	}
 </style>

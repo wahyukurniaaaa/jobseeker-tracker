@@ -15,11 +15,11 @@
 	let isUpdating = $state(false);
 	let error = $state<string | null>(null);
 
-	const statusConfig: Record<ApplicationStatus, { color: string; icon: string }> = {
-		'To Apply': { color: 'status-toapply', icon: '📋' },
-		Applied: { color: 'status-applied', icon: '📨' },
-		Interview: { color: 'status-interview', icon: '🎯' },
-		Rejected: { color: 'status-rejected', icon: '❌' }
+	const statusConfig: Record<ApplicationStatus, { color: string }> = {
+		'To Apply': { color: 'status-toapply' },
+		Applied: { color: 'status-applied' },
+		Interview: { color: 'status-interview' },
+		Rejected: { color: 'status-rejected' }
 	};
 
 	async function handleChange(event: Event) {
@@ -53,8 +53,8 @@
 		onchange={handleChange}
 		disabled={isUpdating}
 	>
-		{#each statuses as s}
-			<option value={s}>{statusConfig[s].icon} {s}</option>
+		{#each statuses as s (s)}
+			<option value={s}>{s}</option>
 		{/each}
 	</select>
 	{#if isUpdating}

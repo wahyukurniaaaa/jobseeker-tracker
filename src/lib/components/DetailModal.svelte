@@ -29,51 +29,75 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <!-- Backdrop -->
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="modal-backdrop" onclick={handleBackdropClick} role="dialog" aria-modal="true" tabindex="-1">
+<div
+	class="modal-backdrop"
+	onclick={handleBackdropClick}
+	role="dialog"
+	aria-modal="true"
+	tabindex="-1"
+>
 	<div class="modal-panel">
 		<!-- Header -->
 		<div class="modal-header">
-			<div>
-				<h2 class="modal-title">{job.company_name}</h2>
-				<p class="modal-subtitle">{job.job_title}</p>
+			<div class="header-text">
+				<h2 class="modal-title">{job.job_title}</h2>
+				<p class="modal-subtitle">{job.company_name}</p>
+				{#if job.location}
+					<p class="modal-location">{job.location}</p>
+				{/if}
 			</div>
-			<button class="close-btn" onclick={onClose} aria-label="Close modal">✕</button>
+			<button class="close-btn" onclick={onClose} aria-label="Tutup">✕</button>
 		</div>
 
 		<!-- Content -->
 		<div class="modal-body">
-			<!-- Job URL -->
-			<section class="detail-section">
-				<h3 class="section-title">🔗 Job Link</h3>
-				<a href={job.job_url} target="_blank" rel="noopener noreferrer" class="job-link">
-					{job.job_url || 'No URL provided'}
-					<span class="ext-icon">↗</span>
+			<!-- Match + Link summary -->
+			<div class="summary-row">
+				<span
+					class="match-num"
+					class:high={job.match_score >= 80}
+					class:mid={job.match_score >= 50 && job.match_score < 80}
+				>
+					{job.match_score}<span class="pct">%</span>
+					<span class="match-label">match score</span>
+				</span>
+				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+				<a href={job.job_url} target="_blank" rel="noopener noreferrer" class="open-link">
+					Buka lowongan ↗
 				</a>
+			</div>
+
+			<!-- Description -->
+			<section class="detail-section">
+				<h3 class="section-title">Deskripsi</h3>
+				{#if job.job_description}
+					<p class="description-text">{job.job_description}</p>
+				{:else}
+					<p class="empty-text">Deskripsi tidak tersedia</p>
+				{/if}
 			</section>
 
 			<!-- Missing Skills -->
 			<section class="detail-section">
-				<h3 class="section-title">⚠️ Missing Skills</h3>
+				<h3 class="section-title">Skill yang kurang</h3>
 				{#if job.missing_skills && job.missing_skills.length > 0}
 					<div class="skills-container">
-						{#each job.missing_skills as skill}
+						{#each job.missing_skills as skill (skill)}
 							<span class="skill-tag">{skill}</span>
 						{/each}
 					</div>
 				{:else}
-					<p class="empty-text">Semua skill terpenuhi 🎉</p>
+					<p class="empty-text">Semua skill terpenuhi</p>
 				{/if}
 			</section>
 
 			<!-- Cover Letter -->
 			<section class="detail-section">
 				<div class="section-header-row">
-					<h3 class="section-title">📝 Cover Letter</h3>
+					<h3 class="section-title">Cover letter</h3>
 					{#if job.cover_letter}
 						<button class="copy-btn" onclick={copyToClipboard} class:copied>
-							{copied ? '✅ Copied!' : '📋 Copy'}
+							{copied ? 'Tersalin' : 'Salin'}
 						</button>
 					{/if}
 				</div>
@@ -148,17 +172,90 @@
 		flex-shrink: 0;
 	}
 
+	.header-text {
+		min-width: 0;
+	}
+
 	.modal-title {
-		font-size: 1.25rem;
+		font-size: 1.15rem;
 		font-weight: 700;
 		color: #f1f5f9;
 		margin: 0;
+		line-height: 1.3;
 	}
 
 	.modal-subtitle {
 		font-size: 0.875rem;
+		color: #94a3b8;
+		margin: 4px 0 0 0;
+	}
+
+	.modal-location {
+		font-size: 0.8rem;
 		color: #64748b;
 		margin: 4px 0 0 0;
+	}
+
+	.summary-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		flex-wrap: wrap;
+	}
+
+	.match-num {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 6px;
+		font-size: 1.5rem;
+		font-weight: 800;
+		color: #ef4444;
+		line-height: 1;
+	}
+
+	.match-num.mid {
+		color: #eab308;
+	}
+
+	.match-num.high {
+		color: #22c55e;
+	}
+
+	.match-num .pct {
+		font-size: 1rem;
+	}
+
+	.match-label {
+		font-size: 0.72rem;
+		font-weight: 500;
+		color: #64748b;
+		letter-spacing: 0.02em;
+	}
+
+	.open-link {
+		font-size: 0.82rem;
+		font-weight: 500;
+		color: #cbd5e1;
+		text-decoration: none;
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		border-radius: 8px;
+		padding: 7px 13px;
+		transition: all 0.15s ease;
+	}
+
+	.open-link:hover {
+		background: rgba(255, 255, 255, 0.06);
+		border-color: rgba(255, 255, 255, 0.2);
+	}
+
+	.description-text {
+		font-size: 0.87rem;
+		line-height: 1.7;
+		color: #cbd5e1;
+		margin: 0;
+		white-space: pre-wrap;
+		word-break: break-word;
 	}
 
 	.close-btn {
@@ -211,27 +308,6 @@
 		justify-content: space-between;
 	}
 
-	.job-link {
-		color: #60a5fa;
-		font-size: 0.875rem;
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		word-break: break-all;
-		text-decoration: none;
-		transition: color 0.2s;
-	}
-
-	.job-link:hover {
-		color: #93c5fd;
-		text-decoration: underline;
-	}
-
-	.ext-icon {
-		font-size: 0.75rem;
-		flex-shrink: 0;
-	}
-
 	.skills-container {
 		display: flex;
 		flex-wrap: wrap;
@@ -239,9 +315,9 @@
 	}
 
 	.skill-tag {
-		background: rgba(168, 85, 247, 0.12);
-		color: #c084fc;
-		border: 1px solid rgba(168, 85, 247, 0.25);
+		background: rgba(255, 255, 255, 0.04);
+		color: #cbd5e1;
+		border: 1px solid rgba(255, 255, 255, 0.1);
 		border-radius: 6px;
 		padding: 4px 12px;
 		font-size: 0.8rem;
@@ -249,9 +325,8 @@
 	}
 
 	.empty-text {
-		color: #475569;
+		color: #64748b;
 		font-size: 0.875rem;
-		font-style: italic;
 		margin: 0;
 	}
 

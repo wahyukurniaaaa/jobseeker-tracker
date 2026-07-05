@@ -18,6 +18,12 @@ Thumbs.db
 !.env.example
 !.env.test
 
+# Kiro (berisi token/API key lokal)
+.kiro/
+
+# Study/research prototypes (tidak dikirim ke produksi)
+.study/
+
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*

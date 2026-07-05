@@ -48,10 +48,11 @@ Ini adalah JSON yang akan diterima oleh node Webhook dari scraper:
 
 ```json
 {
-  "job_title": "Senior Backend Engineer",
-  "company_name": "PT Teknologi Maju Indonesia",
-  "job_description": "Kami mencari Backend Engineer berpengalaman dengan keahlian di Node.js, PostgreSQL, dan arsitektur microservice. Kandidat ideal memiliki pengalaman minimal 3 tahun dalam membangun API RESTful yang scalable. Tanggung jawab meliputi desain database, code review, dan kolaborasi dengan tim frontend. Skill yang dibutuhkan: Node.js, TypeScript, PostgreSQL, Docker, Kubernetes, Redis.",
-  "job_url": "https://example-portal.com/jobs/senior-backend-12345",
+  "job_title": "Customer Service Officer",
+  "company_name": "PT Ritel Maju Indonesia",
+  "job_description": "Kami mencari Customer Service Officer untuk menangani pertanyaan dan keluhan pelanggan melalui telepon, email, dan live chat. Tanggung jawab meliputi input data pelanggan ke CRM, pembuatan laporan harian, dan koordinasi dengan tim internal. Kualifikasi: minimal 2 tahun pengalaman di customer service/administrasi, mahir Microsoft Office & Google Workspace, teliti, dan komunikatif.",
+  "job_url": "https://example-portal.com/jobs/customer-service-officer-12345",
+  "location": "Jakarta Selatan",
   "source_url": "https://example-portal.com/jobs"
 }
 ```
@@ -63,6 +64,7 @@ Ini adalah JSON yang akan diterima oleh node Webhook dari scraper:
 | `company_name` | `string` | Scraper | Nama perusahaan |
 | `job_description` | `string` | Scraper | Deskripsi lengkap lowongan |
 | `job_url` | `string` | Scraper | URL halaman detail lowongan |
+| `location` | `string` | Scraper | Lokasi lowongan (mis. "Jakarta Selatan") |
 | `source_url` | `string` | Scraper | URL portal kerja sumber |
 
 ---
@@ -95,6 +97,7 @@ return [{
     company_name: item.company_name.trim(),
     job_description: item.job_description.trim(),
     job_url: item.job_url.trim(),
+    location: item.location?.trim() || '',
     source_url: item.source_url?.trim() || '',
     received_at: new Date().toISOString(),
   }
@@ -201,6 +204,8 @@ return [{
     company_name: scraperData.company_name,
     job_title: scraperData.job_title,
     job_url: scraperData.job_url,
+    job_description: scraperData.job_description,
+    location: scraperData.location ?? '',
     match_score: matchScore,
     missing_skills: aiData.missing_skills ?? [],
     cover_letter: aiData.cover_letter ?? '',
@@ -225,11 +230,13 @@ Ini adalah JSON yang di-mapping oleh n8n untuk dikirim ke tabel `job_application
 
 ```json
 {
-  "company_name": "PT Teknologi Maju Indonesia",
-  "job_title": "Senior Backend Engineer",
-  "job_url": "https://example-portal.com/jobs/senior-backend-12345",
-  "match_score": 78,
-  "missing_skills": ["Kubernetes", "Redis", "TypeScript"],
+  "company_name": "PT Ritel Maju Indonesia",
+  "job_title": "Customer Service Officer",
+  "job_url": "https://example-portal.com/jobs/customer-service-officer-12345",
+  "job_description": "Menangani pertanyaan & keluhan pelanggan via telepon, email, live chat; input data ke CRM; laporan harian...",
+  "location": "Jakarta Selatan",
+  "match_score": 88,
+  "missing_skills": ["English Advanced", "Zendesk"],
   "cover_letter": "Dengan hormat,\n\nSaya Siti Miftahul Jannah...",
   "status": "To Apply"
 }
@@ -244,6 +251,8 @@ Ini adalah JSON yang di-mapping oleh n8n untuk dikirim ke tabel `job_application
 | `company_name` | `{{ $json.company_name }}` | `text` |
 | `job_title` | `{{ $json.job_title }}` | `text` |
 | `job_url` | `{{ $json.job_url }}` | `text` |
+| `job_description` | `{{ $json.job_description }}` | `text` |
+| `location` | `{{ $json.location }}` | `text` |
 | `match_score` | `{{ $json.match_score }}` | `numeric` |
 | `missing_skills` | `{{ $json.missing_skills }}` | `jsonb` |
 | `cover_letter` | `{{ $json.cover_letter }}` | `text` |
@@ -305,7 +314,7 @@ main.py (Scraper)
     v
 [Node 6: Notifikasi Telegram/Slack]
     |
-    |  "Lamaran baru: Senior Backend Engineer (78%)"
+    |  "Lamaran baru: Customer Service Officer (88%)"
     v
   DONE
 ```
@@ -322,6 +331,8 @@ create table public.job_applications (
   company_name   text        not null,
   job_title      text        not null,
   job_url        text,
+  job_description text,
+  location       text,
   match_score    numeric     default 0 check (match_score >= 0 and match_score <= 100),
   missing_skills jsonb       default '[]'::jsonb,
   cover_letter   text,
@@ -342,8 +353,10 @@ create index idx_job_applications_created_at  on job_applications (created_at de
 
 ### 1. Konfigurasi Scraper `.env`
 ```env
-TARGET_URL=https://url-portal-kerja-target.com/jobs
 N8N_WEBHOOK_URL=http://your-n8n-instance:5678/webhook/job-scraper
+# Boleh beberapa keyword dipisah koma (selaras dengan profil pelamar).
+SEARCH_KEYWORD=Customer Service,Admin,Data Entry,Customer Experience
+MAX_JOBS_PER_SOURCE=10
 ```
 
 ### 2. Jalankan Scraper
