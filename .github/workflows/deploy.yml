@@ -46,3 +46,18 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/jobseeker-tracker-scraper:latest
             ghcr.io/${{ github.repository_owner }}/jobseeker-tracker-scraper:${{ github.sha }}
+
+      - name: Trigger Redeploy on Easypanel
+        run: |
+          echo "Triggering redeploy for Dashboard..."
+          curl -s -X POST "${{ secrets.EASYPANEL_URL }}/api/trpc/services.app.deployService" \
+            -H "Authorization: Bearer ${{ secrets.EASYPANEL_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"json": {"projectName": "laboratory-staging", "serviceName": "jobseeker-dashboard"}}'
+          
+          echo "Triggering redeploy for Scraper..."
+          curl -s -X POST "${{ secrets.EASYPANEL_URL }}/api/trpc/services.app.deployService" \
+            -H "Authorization: Bearer ${{ secrets.EASYPANEL_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"json": {"projectName": "laboratory-staging", "serviceName": "jobseeker-scraper"}}'
+
