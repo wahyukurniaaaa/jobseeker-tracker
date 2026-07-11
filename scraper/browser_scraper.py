@@ -201,7 +201,19 @@ def scrape_glints_browser(keyword: str, max_jobs: int = 10) -> list[dict]:
             if len(listings) >= max_jobs:
                 break
 
-        logger.info(f"  [Glints] Ditemukan {len(listings)} lowongan.")
+        logger.info(f"  [Glints] Ditemukan {len(listings)} lowongan. Mengambil deskripsi detail...")
+        for item in listings:
+            if item["job_url"] != "https://glints.com/id":
+                try:
+                    logger.info(f"  [Glints] Membuka detail: {item['job_url']}")
+                    page.goto(item["job_url"], wait_until="domcontentloaded", timeout=20000)
+                    page.wait_for_timeout(1000)
+                    desc_el = page.query_selector("div[class*='JobDescription']")
+                    if desc_el:
+                        item["job_description"] = desc_el.inner_text().strip()
+                except Exception as e:
+                    logger.warning(f"  [Glints] Gagal mengambil deskripsi detail {item['job_url']}: {e}")
+
         return listings
 
     try:
@@ -293,7 +305,19 @@ def scrape_jobstreet_browser(keyword: str, max_jobs: int = 10) -> list[dict]:
                 }
             )
 
-        logger.info(f"  [JobStreet] Ditemukan {len(listings)} lowongan.")
+        logger.info(f"  [JobStreet] Ditemukan {len(listings)} lowongan. Mengambil deskripsi detail...")
+        for item in listings:
+            if item["job_url"] != search_url:
+                try:
+                    logger.info(f"  [JobStreet] Membuka detail: {item['job_url']}")
+                    page.goto(item["job_url"], wait_until="domcontentloaded", timeout=20000)
+                    page.wait_for_timeout(1000)
+                    desc_el = page.query_selector("[data-automation='jobAdDetails']")
+                    if desc_el:
+                        item["job_description"] = desc_el.inner_text().strip()
+                except Exception as e:
+                    logger.warning(f"  [JobStreet] Gagal mengambil deskripsi detail {item['job_url']}: {e}")
+
         return listings
 
     try:
